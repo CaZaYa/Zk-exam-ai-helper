@@ -9,6 +9,9 @@
 // @grant        GM_getValue
 // @grant        GM_deleteValue
 // @grant        GM_openInTab
+// @license      MIT
+// @downloadURL  https://raw.githubusercontent.com/CaZaYa/Zk-exam-ai-helper/main/Zk-exam-ai-helper.user.js
+// @updateURL    https://raw.githubusercontent.com/CaZaYa/Zk-exam-ai-helper/main/Zk-exam-ai-helper.user.js
 // ==/UserScript==
 
 (function() {
