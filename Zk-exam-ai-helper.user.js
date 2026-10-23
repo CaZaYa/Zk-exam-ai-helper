@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         考试系统 <-> AI (V2.3 完美整合版)
+// @name         考试系统 <-> AI (V2.4 完美整合版)
 // @namespace    http://tampermonkey.net/
-// @version      V2.3
-// @description  完美UI，全自动追踪所有题目，适配最新页面结构，修复DS串线问题，增加使用指南。
+// @version      V2.4
+// @description  完美UI，全自动追踪所有题目，适配最新页面结构，修复DS串线问题，修复单选跳题Bug，增加使用指南。
 // @match        http://192.168.2.51:8000/qt/*
 // @match        https://chat.deepseek.com/*
 // @grant        GM_setValue
@@ -188,7 +188,7 @@
                         <div id="about-modal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 9999999; display: flex; justify-content: center; align-items: center;">
                             <div style="background: white; border-radius: 8px; width: 540px; max-width: 90vw; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: flex; flex-direction: column; overflow: hidden; color: #333; font-family: sans-serif;">
                                 <div style="padding: 15px 20px; border-bottom: 1px solid #ebeef5; display: flex; justify-content: space-between; align-items: center; background: #fcfcfc;">
-                                    <h3 style="margin: 0; font-size: 18px; font-weight: bold;">关于此物 (V2.3 稳定版)</h3>
+                                    <h3 style="margin: 0; font-size: 18px; font-weight: bold;">关于此物 (V2.4 稳定版)</h3>
                                     <button id="close-about-btn" style="background: none; border: none; font-size: 22px; cursor: pointer; color: #909399; line-height: 1;">&times;</button>
                                 </div>
                                 <div style="padding: 20px; font-size: 14px; line-height: 1.6; overflow-y: auto; max-height: 65vh;">
@@ -263,8 +263,7 @@
 
                         if (mode === 'DS' || mode === 'ASK') {
                             const prompt = `请直接回答以下选择题。只输出正确选项的大写字母（多选如 A,B）。绝不要解释！\n类型：${qType}\n题目：${questionSignature}\n选项：\n${options.join('\n')}`;
-
-                            // 防串线核心：生成唯一请求ID
+                            
                             const reqId = Date.now().toString();
                             GM_setValue('ds_current_req_id', reqId);
                             GM_setValue('ds_current_prompt', prompt);
@@ -275,7 +274,6 @@
 
                             let answer = null;
                             for (let i = 0; i < 300; i++) {
-                                // 必须匹配当前请求ID
                                 const respId = GM_getValue('ds_current_resp_id');
                                 if (respId === reqId) {
                                     answer = GM_getValue('ds_current_answer');
@@ -310,17 +308,17 @@
                             return { success: true, signature: questionSignature, skip: true };
                         }
 
-                        // 填选选项
+                        // 1. 填选初始选项
                         for (let opt of options) {
                             const letter = opt.split('.')[0];
                             await setOptionState(letter, initialLetters.includes(letter));
                         }
-                        await sleep(300); // 给Vue渲染时间
+                        await sleep(200); 
 
-                        // 点击确认
-                        const confirmBtn = document.querySelector('.btn-confirm button');
-                        if (confirmBtn && !confirmBtn.disabled) {
-                            confirmBtn.click();
+                        // 2. 【关键修复】：只有多选才点确认
+                        if (isMultiple) {
+                            const confirmBtn = document.querySelector('.btn-confirm button');
+                            if (confirmBtn && !confirmBtn.disabled) confirmBtn.click();
                         }
 
                         let isCorrect = false;
@@ -333,7 +331,7 @@
 
                         let finalAnswerStr = initialLetters.join(',');
 
-                        // 答错修正
+                        // 3. 如果答错，纠正答案
                         if (!isCorrect) {
                             await waitForCondition(() => getCorrectLetters().length > 0, 1500, 50);
                             const uniqueCorrect = getCorrectLetters();
@@ -343,9 +341,15 @@
                                 for (let letter of allLetters) {
                                     await setOptionState(letter, uniqueCorrect.includes(letter));
                                 }
-                                await sleep(300);
-                                if (confirmBtn && !confirmBtn.disabled) confirmBtn.click();
-
+                                await sleep(200);
+                                
+                                // 4. 【关键修复】：纠正后，依然只有多选才点确认
+                                if (isMultiple) {
+                                    const cb = document.querySelector('.btn-confirm button');
+                                    if (cb && !cb.disabled) cb.click();
+                                }
+                                
+                                // 等待它自己跳题
                                 await waitForCondition(() => {
                                     const c = document.querySelector('.exam_timu')?.innerText.trim() || "";
                                     return c !== questionSignature && c !== "";
@@ -412,6 +416,7 @@
                                 }, 800, 50);
 
                                 if (!changed) {
+                                    await sleep(500);
                                     const nextBtn = Array.from(document.querySelectorAll('button.el-button')).find(el => el.innerText.includes('下一题') && !el.disabled);
                                     if (nextBtn) {
                                         nextBtn.click();
@@ -425,7 +430,7 @@
                                     }
                                 }
                             }
-                            await sleep(500); // 防止刷得太快
+                            await sleep(500); 
                             autoBtn.innerText = '⏳ 答题中...';
                         }
 
@@ -465,7 +470,6 @@
             const prompt = GM_getValue('ds_current_prompt');
             if (!prompt || isProcessing) return;
 
-            // 获取这次的请求ID
             const reqId = GM_getValue('ds_current_req_id');
 
             isProcessing = true;
@@ -482,7 +486,7 @@
             const textarea = textareas.find(el => el.placeholder && el.placeholder.includes('发送消息'));
 
             if (!textarea) {
-                isProcessing = false; // 找不到输入框直接退出，防止卡死
+                isProcessing = false;
                 return;
             }
 
@@ -505,7 +509,6 @@
             }
         }, 1000);
 
-        // 接收 reqId
         function waitForAnswer(reqId) {
             return new Promise((resolve) => {
                 let startTime = Date.now();
@@ -513,7 +516,7 @@
                     if (Date.now() - startTime > 120000) {
                         clearInterval(timer);
                         GM_setValue('ds_current_answer', 'X');
-                        GM_setValue('ds_current_resp_id', reqId); // 超时也带ID
+                        GM_setValue('ds_current_resp_id', reqId);
                         resolve();
                         return;
                     }
@@ -531,7 +534,6 @@
                             if (matches && matches.length > 0) {
                                 clearInterval(timer);
                                 GM_setValue('ds_current_answer', [...new Set(matches)].join(','));
-                                // 回传答案时带上 reqId，完成闭环
                                 GM_setValue('ds_current_resp_id', reqId);
                                 resolve();
                             }
